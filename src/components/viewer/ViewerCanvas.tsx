@@ -14,18 +14,20 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 import type { ModelDef } from '../viewer/types'
 
+// 부품 상태 타입 정의
+export interface PartStateDef {
+  partUuid: string;
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  isExploded: boolean;
+}
+
 export type ViewerCanvasHandle = {
+  getFullCameraState: () => any
+  getPartsState: () => PartStateDef[]
   zoomIn: () => void
   zoomOut: () => void
   resetCamera: () => void
-  getCameraState: () => {
-    position: [number, number, number]
-    target: [number, number, number]
-  } | undefined
-  setCameraState: (state: {
-    position: [number, number, number]
-    target: [number, number, number]
-  }) => void
 }
 
 const ViewerCanvas = forwardRef<
@@ -37,12 +39,11 @@ const ViewerCanvas = forwardRef<
     onSelectPart: (id: string | null) => void
     isExpanded: boolean
     mode: string
-    initialCameraState?: {
-      position: [number, number, number]
-      target: [number, number, number]
-    }
+    // 초기 상태 주입용 Props
+    initialCameraState?: any
+    initialPartsState?: PartStateDef[]
   }
->(({ model, ghost, selectedPartId, onSelectPart, isExpanded, mode, initialCameraState }, ref) => {
+>(({ model, ghost, selectedPartId, onSelectPart, isExpanded, mode, initialCameraState, initialPartsState }, ref) => {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const refs = useRef<{
     scene: THREE.Scene
@@ -53,7 +54,6 @@ const ViewerCanvas = forwardRef<
     rafId: number
   } | null>(null)
 
-  // 고유 ID(p.id)를 키로 사용하여 중복 부품을 개별적으로 관리
   const partsRef = useRef<Record<string, {
     root: THREE.Group
     assembled: THREE.Vector3
@@ -64,18 +64,17 @@ const ViewerCanvas = forwardRef<
 
   const pickablesRef = useRef<THREE.Object3D[]>([])
   const materialSnapshot = useMemo(() => new WeakMap<THREE.Material, any>(), [])
-
   const simFromRef = useRef<Record<string, THREE.Vector3>>({})
   const simToRef = useRef<Record<string, THREE.Vector3>>({})
   const explodeRef = useRef(0)
   const draggingRef = useRef(false)
   const lastYRef = useRef(0)
 
+  // 부품 이동 애니메이션
   const animatePartToPosition = (id: string, obj: THREE.Object3D, targetPos: THREE.Vector3) => {
     let startTime: number | null = null;
     const startPos = obj.position.clone();
     const duration = 600;
-
     const step = (timestamp: number) => {
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
@@ -91,6 +90,29 @@ const ViewerCanvas = forwardRef<
   };
 
   useImperativeHandle(ref, () => ({
+    getFullCameraState() {
+      if (!refs.current) return null
+      const { camera, controls } = refs.current
+      return {
+        position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+        target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
+        zoom: camera.zoom,
+      }
+    },
+    getPartsState() {
+      return Object.entries(partsRef.current)
+        .map(([id, p]) => {
+          const partUuid = model.parts.find(pt => pt.id === id)?.partUuid
+          if (!partUuid) return null
+          return {
+            partUuid,
+            position: { x: p.root.position.x, y: p.root.position.y, z: p.root.position.z },
+            rotation: { x: p.root.rotation.x, y: p.root.rotation.y, z: p.root.rotation.z },
+            isExploded: !p.isDone,
+          }
+        })
+        .filter((item): item is PartStateDef => Boolean(item))
+    },
     zoomIn() {
       if (!refs.current) return
       const dir = new THREE.Vector3()
@@ -108,42 +130,25 @@ const ViewerCanvas = forwardRef<
     resetCamera() {
       if (!refs.current) return
       const { camera, controls, transformControls } = refs.current
+      
+      // 카메라 기본 위치로 리셋
       camera.position.set(1.0, 0.8, 1.2)
       controls.target.set(0, 0.4, 0)
       controls.update()
       transformControls.detach()
       onSelectPart(null)
-
       explodeRef.current = 0
       
+      // 부품 위치 리셋 (저장된 상태 무시하고 초기 상태로)
       Object.entries(partsRef.current).forEach(([id, p]) => {
         const isAssembledMode = (mode === 'assembly' || mode === 'simulator')
-        const resetPos = isAssembledMode ? p.assembled : p.exploded
-        
-        p.root.position.copy(resetPos) 
+        p.root.position.copy(isAssembledMode ? p.assembled : p.exploded)
+        p.root.rotation.set(0,0,0)
         p.isDone = isAssembledMode;
         
-        if(simFromRef.current[id]) simFromRef.current[id].copy(resetPos)
-        if(simToRef.current[id]) {
-          simToRef.current[id].copy(isAssembledMode ? p.exploded : p.assembled)
-        }
+        if(simFromRef.current[id]) simFromRef.current[id].copy(p.root.position)
+        if(simToRef.current[id]) simToRef.current[id].copy(isAssembledMode ? p.exploded : p.assembled)
       })
-    },
-    getCameraState() {
-      if (!refs.current) return undefined
-      const { camera, controls } = refs.current
-      return {
-        position: [camera.position.x, camera.position.y, camera.position.z],
-        target: [controls.target.x, controls.target.y, controls.target.z],
-      }
-    },
-    setCameraState(state) {
-      if (!refs.current) return
-      const { camera, controls } = refs.current
-      camera.position.set(...state.position)
-      controls.target.set(...state.target)
-      camera.updateProjectionMatrix()
-      controls.update()
     }
   }))
 
@@ -207,6 +212,7 @@ const ViewerCanvas = forwardRef<
     return () => ro.disconnect()
   }, [isExpanded])
 
+  // Main Scene Setup
   useLayoutEffect(() => {
     if (!mountRef.current) return
     const width = mountRef.current.clientWidth
@@ -214,8 +220,16 @@ const ViewerCanvas = forwardRef<
 
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(0x0f172a)
+    
     const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100)
-    camera.position.set(...(initialCameraState?.position ?? [1, 0.8, 1.2]))
+
+    // 초기 카메라 위치 적용
+    if (initialCameraState && initialCameraState.position) {
+        camera.position.set(initialCameraState.position.x, initialCameraState.position.y, initialCameraState.position.z);
+        if (initialCameraState.zoom) camera.zoom = initialCameraState.zoom;
+    } else {
+        camera.position.set(1, 0.8, 1.2);
+    }
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(window.devicePixelRatio)
@@ -224,10 +238,16 @@ const ViewerCanvas = forwardRef<
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
-    controls.target.set(...(initialCameraState?.target ?? [0, 0.4, 0]))
+    
+    // 초기 타겟 적용
+    if (initialCameraState && initialCameraState.target) {
+        controls.target.set(initialCameraState.target.x, initialCameraState.target.y, initialCameraState.target.z);
+    } else {
+        controls.target.set(0, 0.4, 0);
+    }
 
     const transformControls = new TransformControls(camera, renderer.domElement)
-    scene.add(transformControls as unknown as THREE.Object3D)
+    scene.add(transformControls.getHelper());
     transformControls.addEventListener('dragging-changed', (e) => {
       controls.enabled = !e.value
     })
@@ -248,12 +268,33 @@ const ViewerCanvas = forwardRef<
       loader.load(p.path, (gltf: GLTF) => {
         const root = gltf.scene
         const wrapper = new THREE.Group()
+        
         if (p.rotation) root.rotation.set(p.rotation.x, p.rotation.y, p.rotation.z)
         wrapper.add(root)
         
+        // 데이터 초기화 및 오류 방지 로직
         const isAssembledInit = (mode === 'assembly' || mode === 'simulator')
-        const startPos = isAssembledInit ? p.assembled : p.exploded
-        wrapper.position.set(startPos.x, startPos.y, startPos.z)
+        
+        // JSON 객체({x,y,z})를 가져와서 THREE.Vector3로 변환
+        const defaultPosData = isAssembledInit ? p.assembled : p.exploded
+        
+        // 변환된 Vector3 생성 
+        let finalPos = new THREE.Vector3(defaultPosData.x, defaultPosData.y, defaultPosData.z)
+        let finalRot = new THREE.Euler(0, 0, 0)
+        let isDoneState = isAssembledInit
+
+        // 로컬 스토리지에 저장된 값이 있으면 덮어쓰기
+        if (initialPartsState && p.partUuid) {
+             const saved = initialPartsState.find(s => s.partUuid === p.partUuid)
+             if (saved) {
+                 finalPos = new THREE.Vector3(saved.position.x, saved.position.y, saved.position.z)
+                 finalRot = new THREE.Euler(saved.rotation.x, saved.rotation.y, saved.rotation.z)
+                 isDoneState = !saved.isExploded
+             }
+        }
+
+        wrapper.position.copy(finalPos)
+        wrapper.rotation.copy(finalRot)
 
         root.traverse((obj: any) => {
           if (!obj.isMesh) return
@@ -271,16 +312,21 @@ const ViewerCanvas = forwardRef<
           })
         })
 
+        // 조립/분해 상태도 Vector3로 확실하게 변환
         const assembled = new THREE.Vector3(p.assembled.x, p.assembled.y, p.assembled.z)
         const exploded = new THREE.Vector3(p.exploded.x, p.exploded.y, p.exploded.z)
 
         partsRef.current[p.id] = { 
-            root: wrapper, assembled, exploded, isAdded: false, 
-            isDone: isAssembledInit 
+            root: wrapper, 
+            assembled, 
+            exploded, 
+            isAdded: false, 
+            isDone: isDoneState 
         }
         
-        simFromRef.current[p.id] = isAssembledInit ? assembled.clone() : exploded.clone()
-        simToRef.current[p.id] = isAssembledInit ? exploded.clone() : assembled.clone()
+        // 시뮬레이션용 데이터 초기화 
+        simFromRef.current[p.id] = finalPos.clone()
+        simToRef.current[p.id] = isDoneState ? exploded.clone() : assembled.clone()
 
         if (mode !== 'single') {
           scene.add(wrapper)
@@ -378,8 +424,9 @@ const ViewerCanvas = forwardRef<
       mountRef.current?.removeChild(renderer.domElement)
       refs.current = null
     }
-  }, [model.id, mode])
+  }, [model.id, mode, initialCameraState, initialPartsState]) 
 
+  // Material & Selection Effects
   useEffect(() => {
     if (!refs.current) return
     const { scene, transformControls } = refs.current
@@ -409,7 +456,7 @@ const ViewerCanvas = forwardRef<
           p.isAdded = true
         }
       }
-
+      
       p.root.traverse((obj: any) => {
         if (!obj.isMesh) return
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material]

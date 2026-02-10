@@ -8,7 +8,7 @@ html, body, #root {
   overflow: hidden; /* 스크롤바가 생기는 걸 방지 */
 }
 
-/* 모든 요소의 크기 계산 방식을 통일 (중요!) */
+/* 모든 요소의 크기 계산 방식을 통일 */
 * {
   box-sizing: border-box;
 }

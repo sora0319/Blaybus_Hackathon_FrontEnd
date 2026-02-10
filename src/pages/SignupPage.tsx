@@ -42,8 +42,6 @@ const SignupPage = () => {
     setIsLoading(true);
 
     try {
-      // 3. API 요청 (백엔드 명세: username, email, password)
-      // 화면의 '이름' -> username, '아이디(이메일)' -> email 로 매핑
       const response = await api.post('/api/users/signup', {
         username: name, 
         email: email,

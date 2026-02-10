@@ -16,7 +16,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const [isLoading, setIsLoading] = useState(false);
 
-  // ✅ 새로고침 시 로그인 상태 복원
+  // 새로고침 시 로그인 상태 복원
   useEffect(() => {
     const stored = localStorage.getItem("isLoggedIn");
     setIsAuthenticated(stored === "true");

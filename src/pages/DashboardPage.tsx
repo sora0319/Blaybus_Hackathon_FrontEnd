@@ -95,10 +95,8 @@ function ProjectCard({ title, desc, imageSrc, onClick }: any) {
   )
 }
 
-/* =============================================================
-   STYLES (REFINED & READABLE)
-   ============================================================= */
 
+// STYLES (REFINED & READABLE)
 const containerStyle: React.CSSProperties = {
   minHeight: '100vh',
   display: 'flex',
@@ -106,7 +104,7 @@ const containerStyle: React.CSSProperties = {
   background: 'radial-gradient(circle at center, #1e293b 0%, #080c14 100%)',
   color: 'white',
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  paddingTop: '60px', // 헤더 높이만큼 여백 추가 [필수]
+  paddingTop: '60px', // 헤더 높이만큼 여백 추가 
 };
 
 const mainStyle: React.CSSProperties = {

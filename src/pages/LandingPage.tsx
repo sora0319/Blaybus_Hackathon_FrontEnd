@@ -63,7 +63,7 @@ const LandingPage = () => {
           Login
         </button>
         
-        {/* Signup 버튼 수정: /signup 으로 이동 */}
+        {/* Signup 버튼: /signup 으로 이동 */}
         <button 
           onClick={() => navigate('/signup')}
           style={{

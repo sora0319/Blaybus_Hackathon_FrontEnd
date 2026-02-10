@@ -17,14 +17,12 @@ export type ModelDescription = {
 export type PartDef = {
   id: string
   name: string
-  // label은 데이터에 없으므로 선택적 속성(?)으로 바꾸거나 지워야 합니다.
-  label?: string 
+  // label?: string 
   material: string 
   desc: string 
   path: string 
-  
-  // ▼ 여기에 thumbnail을 추가해야 빨간 줄이 사라집니다.
   thumbnail: string
+  partUuid?: string
 
   assembled: { x: number, y: number, z: number }
   exploded: { x: number, y: number, z: number }
@@ -32,12 +30,8 @@ export type PartDef = {
 }
 
 export type ModelDef = {
-  // SuspensionModel 데이터에 id, name이 없다면 여기도 ?를 붙이거나 데이터에 추가해야 합니다.
   id?: string 
   name?: string
-  
-  // ▼ 데이터에 있는 description 객체를 받기 위해 추가
   description?: ModelDescription
-  
   parts: PartDef[]
 }
