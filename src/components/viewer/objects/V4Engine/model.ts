@@ -50,7 +50,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.3, z: 0.25 },
     },
     {
-      id: 'Piston',
+      id: 'Piston ',
       name: 'Piston',
       material: '알루미늄 합금',
       desc: '- 연소 압력을 받아 직선 운동을 생성\n\n- 실린더 내부에서 상하 왕복 운동을 하며, 연소 에너지를 Connecting Rod로 전달\n\n- 진 출력과 효율에 직접적인 영향을 주는 부품',
@@ -72,7 +72,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.6, z: 0.25 },
     },
     {
-      id: 'Connecting Rod Cap',
+      id: 'Connecting Rod Cap 2',
       name: 'Connecting Rod Cap',
       material: '합금강, 일부-단조 강',
       desc: '- 커넥팅 로드를 크랭크샤프트에 고정하는 하부 캡\n\n- Connecting Rod의 하단부를 분리형 구조로 만들어 크랭크샤프트에 감싸 결합\n\n- Conrod Bolt와 함께 체결되어 고속 회전 중에도 안정성을 유지',
@@ -83,7 +83,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.15, z: 0.1 },
     },
     {
-      id: 'Connecting Rod',
+      id: 'Connecting Rod 2',
       name: 'Connecting Rod',
       material: '합금강, 티타늄 합금',
       desc: '- 피스톤의 직선 운동을 크랭크샤프트의 회전 운동으로 전달\n\n- 상단은 피스톤, 하단은 크랭크샤프트와 연결되며 엔진 동력 전달의 핵심 링크 역할\n\n- 반복적인 인장·압축 하중을 견뎌야 하므로 고강도 재질로 제작',
@@ -94,7 +94,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.3,  z: 0.1 },
     },
     {
-      id: 'Piston',
+      id: 'Piston 2',
       name: 'Piston',
       material: '알루미늄 합금',
       desc: '- 연소 압력을 받아 직선 운동을 생성\n\n- 실린더 내부에서 상하 왕복 운동을 하며, 연소 에너지를 Connecting Rod로 전달\n\n- 진 출력과 효율에 직접적인 영향을 주는 부품',
@@ -105,7 +105,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.45, z: 0.1 },
     },
     {
-      id: 'Piston Pin',
+      id: 'Piston Pin 2',
       name: 'Piston Pin',
       material: '고탄소강 또는 합금강, 표면 경화 강',
       desc: '- 피스톤과 커넥팅 로드를 회전 가능하게 연결\n\n- 피스톤 내부를 관통하여 Connecting Rod 상단과 결합되며, 운동 시 발생하는 각도 변화를 부드럽게 흡수',
@@ -116,7 +116,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.6,  z: 0.1 },
     },
     {
-      id: 'Connecting Rod Cap',
+      id: 'Connecting Rod Cap 3',
       name: 'Connecting Rod Cap',
       material: '합금강, 일부-단조 강',
       desc: '- 커넥팅 로드를 크랭크샤프트에 고정하는 하부 캡\n\n- Connecting Rod의 하단부를 분리형 구조로 만들어 크랭크샤프트에 감싸 결합\n\n- Conrod Bolt와 함께 체결되어 고속 회전 중에도 안정성을 유지',
@@ -127,7 +127,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.15, z: -0.1 },
     },
     {
-      id: 'Connecting Rod',
+      id: 'Connecting Rod 3',
       name: 'Connecting Rod',
       material: '합금강, 티타늄 합금',
       desc: '- 피스톤의 직선 운동을 크랭크샤프트의 회전 운동으로 전달\n\n- 상단은 피스톤, 하단은 크랭크샤프트와 연결되며 엔진 동력 전달의 핵심 링크 역할\n\n- 반복적인 인장·압축 하중을 견뎌야 하므로 고강도 재질로 제작',
@@ -138,7 +138,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.3,  z: -0.1 },
     },
     {
-      id: 'Piston',
+      id: 'Piston 3',
       name: 'Piston',
       material: '알루미늄 합금',
       desc: '- 연소 압력을 받아 직선 운동을 생성\n\n- 실린더 내부에서 상하 왕복 운동을 하며, 연소 에너지를 Connecting Rod로 전달\n\n- 진 출력과 효율에 직접적인 영향을 주는 부품',
@@ -149,7 +149,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.45, z: -0.1 },
     },
     {
-      id: 'Piston Pin',
+      id: 'Piston Pin 3',
       name: 'Piston Pin',
       material: '고탄소강 또는 합금강, 표면 경화 강',
       desc: '- 피스톤과 커넥팅 로드를 회전 가능하게 연결\n\n- 피스톤 내부를 관통하여 Connecting Rod 상단과 결합되며, 운동 시 발생하는 각도 변화를 부드럽게 흡수',
@@ -160,7 +160,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.6,  z: -0.1 },
     },
     {
-      id: 'Connecting Rod Cap',
+      id: 'Connecting Rod Cap 4',
       name: 'Connecting Rod Cap',
       material: '합금강, 일부-단조 강',
       desc: '- 커넥팅 로드를 크랭크샤프트에 고정하는 하부 캡\n\n- Connecting Rod의 하단부를 분리형 구조로 만들어 크랭크샤프트에 감싸 결합\n\n- Conrod Bolt와 함께 체결되어 고속 회전 중에도 안정성을 유지',
@@ -171,7 +171,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.15, z: -0.25 },
     },
     {
-      id: 'Connecting Rod',
+      id: 'Connecting Rod 4',
       name: 'Connecting Rod',
       material: '합금강, 티타늄 합금',
       desc: '- 피스톤의 직선 운동을 크랭크샤프트의 회전 운동으로 전달\n\n- 상단은 피스톤, 하단은 크랭크샤프트와 연결되며 엔진 동력 전달의 핵심 링크 역할\n\n- 반복적인 인장·압축 하중을 견뎌야 하므로 고강도 재질로 제작',
@@ -182,7 +182,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.3,  z: -0.25 },
     },
     {
-      id: 'Piston',
+      id: 'Piston 4',
       name: 'Piston',
       material: '알루미늄 합금',
       desc: '- 연소 압력을 받아 직선 운동을 생성\n\n- 실린더 내부에서 상하 왕복 운동을 하며, 연소 에너지를 Connecting Rod로 전달\n\n- 진 출력과 효율에 직접적인 영향을 주는 부품',
@@ -193,7 +193,7 @@ export const V4EngineModel = {
       exploded: { x: 0, y: 0.45, z: -0.25 },
     },
     {
-      id: 'Piston Pin',
+      id: 'Piston Pin 4',
       name: 'Piston Pin',
       material: '고탄소강 또는 합금강, 표면 경화 강',
       desc: '- 피스톤과 커넥팅 로드를 회전 가능하게 연결\n\n- 피스톤 내부를 관통하여 Connecting Rod 상단과 결합되며, 운동 시 발생하는 각도 변화를 부드럽게 흡수',

@@ -53,11 +53,13 @@ const ViewerCanvas = forwardRef<
     rafId: number
   } | null>(null)
 
+  // 고유 ID(p.id)를 키로 사용하여 중복 부품을 개별적으로 관리
   const partsRef = useRef<Record<string, {
     root: THREE.Group
     assembled: THREE.Vector3
     exploded: THREE.Vector3
     isAdded: boolean
+    isDone?: boolean
   }>>({})
 
   const pickablesRef = useRef<THREE.Object3D[]>([])
@@ -69,8 +71,7 @@ const ViewerCanvas = forwardRef<
   const draggingRef = useRef(false)
   const lastYRef = useRef(0)
 
-  // 조립 애니메이션 함수
-  const animatePartToPosition = (obj: THREE.Object3D, targetPos: THREE.Vector3) => {
+  const animatePartToPosition = (id: string, obj: THREE.Object3D, targetPos: THREE.Vector3) => {
     let startTime: number | null = null;
     const startPos = obj.position.clone();
     const duration = 600;
@@ -80,7 +81,11 @@ const ViewerCanvas = forwardRef<
       const progress = Math.min((timestamp - startTime) / duration, 1);
       const ease = 1 - Math.pow(2, -10 * progress);
       obj.position.lerpVectors(startPos, targetPos, ease);
-      if (progress < 1) requestAnimationFrame(step);
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      } else {
+        if (partsRef.current[id]) partsRef.current[id].isDone = true;
+      }
     };
     requestAnimationFrame(step);
   };
@@ -110,10 +115,18 @@ const ViewerCanvas = forwardRef<
       onSelectPart(null)
 
       explodeRef.current = 0
+      
       Object.entries(partsRef.current).forEach(([id, p]) => {
-        p.root.position.copy(p.exploded) 
-        if(simFromRef.current[id]) simFromRef.current[id].copy(p.exploded)
-        if(simToRef.current[id]) simToRef.current[id].copy(p.assembled)
+        const isAssembledMode = (mode === 'assembly' || mode === 'simulator')
+        const resetPos = isAssembledMode ? p.assembled : p.exploded
+        
+        p.root.position.copy(resetPos) 
+        p.isDone = isAssembledMode;
+        
+        if(simFromRef.current[id]) simFromRef.current[id].copy(resetPos)
+        if(simToRef.current[id]) {
+          simToRef.current[id].copy(isAssembledMode ? p.exploded : p.assembled)
+        }
       })
     },
     getCameraState() {
@@ -124,18 +137,11 @@ const ViewerCanvas = forwardRef<
         target: [controls.target.x, controls.target.y, controls.target.z],
       }
     },
-    // 저장된 상태로 카메라 강제 이동
     setCameraState(state) {
       if (!refs.current) return
       const { camera, controls } = refs.current
-      
-      // 카메라 위치 복원
       camera.position.set(...state.position)
-      
-      // 바라보는 지점(Target) 복원
       controls.target.set(...state.target)
-      
-      // 변경 사항 적용
       camera.updateProjectionMatrix()
       controls.update()
     }
@@ -148,7 +154,7 @@ const ViewerCanvas = forwardRef<
     const center = box.getCenter(new THREE.Vector3())
     const maxDim = Math.max(size.x, size.y, size.z)
     const fov = refs.current.camera.fov * (Math.PI / 180)
-    const distance = (maxDim / (2 * Math.tan(fov / 2))) * 1.5
+    const distance = (maxDim / (2 * Math.tan(fov / 2))) * 5
 
     refs.current.camera.position.set(center.x + distance, center.y + distance, center.z + distance)
     refs.current.controls.target.copy(center)
@@ -243,30 +249,15 @@ const ViewerCanvas = forwardRef<
         const root = gltf.scene
         const wrapper = new THREE.Group()
         if (p.rotation) root.rotation.set(p.rotation.x, p.rotation.y, p.rotation.z)
-
-        // ✅ [추가 1] 모델에 설정된 scale이 있으면 가져오고, 없으면 1(기본값) 사용
-        // (TypeScript 에러가 나면 (model as any).scale 로 하세요)
-        const globalScale = (model as any).scale || 1;
-
-        // ✅ [추가 2] 부품 자체의 크기를 키움
-        root.scale.setScalar(globalScale);
-
         wrapper.add(root)
-
-        // ✅ [수정] 초기 위치 설정 시 좌표에도 배율 곱하기
-        const startPos = mode === 'edit' ? p.exploded : p.assembled
-        wrapper.position.set(
-            startPos.x * globalScale, 
-            startPos.y * globalScale, 
-            startPos.z * globalScale
-        )
         
-        // const startPos = mode === 'edit' ? p.exploded : p.assembled
-        // wrapper.position.set(startPos.x, startPos.y, startPos.z)
+        const isAssembledInit = (mode === 'assembly' || mode === 'simulator')
+        const startPos = isAssembledInit ? p.assembled : p.exploded
+        wrapper.position.set(startPos.x, startPos.y, startPos.z)
 
         root.traverse((obj: any) => {
           if (!obj.isMesh) return
-          obj.userData.partId = p.id
+          obj.userData.partId = p.id 
           pickablesRef.current.push(obj)
           const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
           mats.forEach((m: any) => {
@@ -280,21 +271,16 @@ const ViewerCanvas = forwardRef<
           })
         })
 
-        // ✅ [수정] 조립/분해 위치(Vector3) 저장 시에도 배율 곱하기
-        const assembled = new THREE.Vector3(
-            p.assembled.x * globalScale, 
-            p.assembled.y * globalScale, 
-            p.assembled.z * globalScale
-        )
-        const exploded = new THREE.Vector3(
-            p.exploded.x * globalScale, 
-            p.exploded.y * globalScale, 
-            p.exploded.z * globalScale
-        )
+        const assembled = new THREE.Vector3(p.assembled.x, p.assembled.y, p.assembled.z)
+        const exploded = new THREE.Vector3(p.exploded.x, p.exploded.y, p.exploded.z)
 
-        partsRef.current[p.id] = { root: wrapper, assembled, exploded, isAdded: false }
-        simFromRef.current[p.id] = mode === 'edit' ? exploded.clone() : assembled.clone()
-        simToRef.current[p.id] = mode === 'edit' ? assembled.clone() : exploded.clone()
+        partsRef.current[p.id] = { 
+            root: wrapper, assembled, exploded, isAdded: false, 
+            isDone: isAssembledInit 
+        }
+        
+        simFromRef.current[p.id] = isAssembledInit ? assembled.clone() : exploded.clone()
+        simToRef.current[p.id] = isAssembledInit ? exploded.clone() : assembled.clone()
 
         if (mode !== 'single') {
           scene.add(wrapper)
@@ -304,19 +290,14 @@ const ViewerCanvas = forwardRef<
     })
 
     const onClick = (e: MouseEvent) => {
-      if (draggingRef.current || !refs.current) return
-      
+      if (draggingRef.current || !refs.current || mode === 'single') return 
       const rect = renderer.domElement.getBoundingClientRect()
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
-
       raycaster.setFromCamera(mouse, camera)
       const intersects = raycaster.intersectObjects(pickablesRef.current)
-
       if (intersects.length > 0) {
-        const hit = intersects[0].object
-        const partId = hit.userData.partId
-        onSelectPart(partId)
+        onSelectPart(intersects[0].object.userData.partId)
       } else {
         onSelectPart(null)
         transformControls.detach()
@@ -324,30 +305,25 @@ const ViewerCanvas = forwardRef<
     }
 
     const onPointerDown = (e: PointerEvent) => {
-      if (!refs.current) return;
-
+      if (!refs.current || mode === 'single') return; 
       if (mode === 'edit') {
         const rect = renderer.domElement.getBoundingClientRect()
         mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
         mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
-
         raycaster.setFromCamera(mouse, camera)
         const intersects = raycaster.intersectObjects(pickablesRef.current)
-
         if (intersects.length > 0) {
-          const hit = intersects[0].object
-          const partId = hit.userData.partId
+          const partId = intersects[0].object.userData.partId
           const part = partsRef.current[partId]
-          if (part) {
+          if (part && !part.isDone) {
             onSelectPart(partId)
-            animatePartToPosition(part.root, part.assembled)
+            animatePartToPosition(partId, part.root, part.assembled)
           }
         } else {
           onSelectPart(null)
         }
         return
       }
-
       if (mode === 'simulator' && e.shiftKey) {
         draggingRef.current = true
         lastYRef.current = e.clientY
@@ -356,23 +332,21 @@ const ViewerCanvas = forwardRef<
     }
 
     const onPointerMove = (e: PointerEvent) => {
-      if (!draggingRef.current) return
+      if (!draggingRef.current || mode === 'single') return 
       const dy = lastYRef.current - e.clientY
       lastYRef.current = e.clientY
       explodeRef.current = THREE.MathUtils.clamp(explodeRef.current + dy * 0.005, 0, 1)
-
       Object.entries(partsRef.current).forEach(([id, p]) => {
         p.root.position.lerpVectors(simFromRef.current[id], simToRef.current[id], explodeRef.current)
       })
     }
 
     const onPointerUp = () => {
-      if (!draggingRef.current) return
+      if (!draggingRef.current || mode === 'single') return 
       draggingRef.current = false
       controls.enabled = true
       const shouldExplode = explodeRef.current > 0.5
       explodeRef.current = shouldExplode ? 1 : 0
-
       Object.entries(partsRef.current).forEach(([id, p]) => {
         const finalPos = shouldExplode ? simToRef.current[id] : simFromRef.current[id]
         p.root.position.copy(finalPos)
@@ -414,53 +388,41 @@ const ViewerCanvas = forwardRef<
       const isTarget = selectedPartId === id
 
       if (mode === 'single') {
-        // ✅ [수정 지점] 단일 부품 모드에서 가시성 제어
         if (isTarget) {
           if (!p.isAdded) {
             scene.add(p.root)
             p.isAdded = true
-            // 초기 중앙 정렬
-            p.root.position.set(0, 0, 0)
-            animateAppear(p.root)
-            framePart(p.root)
           }
+          p.root.position.set(0, 0, 0)
+          animateAppear(p.root)
+          framePart(p.root)
           transformControls.detach()
         } else {
-          // 선택되지 않은 부품은 무조건 제거 (중복된 부품 ID라도 선택된 것만 남김)
           if (p.isAdded) {
             scene.remove(p.root)
             p.isAdded = false
           }
         }
-
-        // 하이라이트 초기화 (단일 모드에서는 기본 재질 선호)
-        p.root.traverse((obj: any) => {
-          if (!obj.isMesh) return
-          const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
-          mats.forEach((m: any) => {
-            const snap = materialSnapshot.get(m)
-            if (snap) {
-              m.emissive.copy(snap.emissive)
-              m.emissiveIntensity = 1.0
-              m.transparent = snap.transparent
-              m.opacity = snap.opacity
-            }
-          })
-        })
       } else {
-        // 일반 모드 (조립도, 편집, 시뮬레이터)
         if (!p.isAdded) {
           scene.add(p.root)
           p.isAdded = true
         }
+      }
 
-        p.root.traverse((obj: any) => {
-          if (!obj.isMesh) return
-          const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
-          mats.forEach((m: any) => {
-            const snap = materialSnapshot.get(m)
-            if (!snap) return
+      p.root.traverse((obj: any) => {
+        if (!obj.isMesh) return
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+        mats.forEach((m: any) => {
+          const snap = materialSnapshot.get(m)
+          if (!snap) return
 
+          if (mode === 'single') {
+            m.emissive.copy(snap.emissive)
+            m.emissiveIntensity = 1.0
+            m.transparent = snap.transparent
+            m.opacity = snap.opacity
+          } else {
             if (isTarget) {
               m.emissive.setHex(0x38bdf8)
               m.emissiveIntensity = 0.5
@@ -476,9 +438,9 @@ const ViewerCanvas = forwardRef<
               m.transparent = snap.transparent
               m.opacity = snap.opacity
             }
-          })
+          }
         })
-      }
+      })
     })
   }, [selectedPartId, mode, ghost])
 

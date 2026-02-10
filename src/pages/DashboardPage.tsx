@@ -1,23 +1,56 @@
 'use client'
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../providers/AuthProvider"
+import { getModelList } from "../api/model";
+import type { ModelSummary } from "../api/types";
 
+
+// 대시보드 페이지
 export default function DashboardPage() {
-  const auth = useAuth();
-  const navigate = useNavigate();
+  const auth = useAuth()
+  console.log("DASHBOARD AUTH:", auth);
+  const navigate = useNavigate()
+
+  const [models, setModels] = useState<ModelSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    document.body.style.margin = '0';
-    document.body.style.padding = '0';
-  }, []);
+    document.body.style.margin = '0'
+    document.body.style.padding = '0'
+  }, [])
 
-  if (!auth) return null;
+  useEffect(() => {
+    const fetchModels = async () => {
+      
+      try {
+        const res = await getModelList()
+
+        console.log("FULL RESPONSE:", res)
+        console.log("MODEL DATA:", res.data)
+        console.log("MODEL COUNT:", res.data.length)
+
+        setModels(res.data)
+      } catch {
+        setError("모델 목록을 불러오지 못했습니다.")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchModels()
+  }, [])
+
+  if (auth.isAuthenticated === null) {
+    return <div style={{ color: "white" }}>Auth Loading...</div>
+  }
+  if (loading) return <div>Loading...</div>
+  if (error) return <div>{error}</div>
 
   return (
     <div style={containerStyle}>
-      
       <main style={mainStyle}>
         <div style={titleSectionStyle}>
           <h1 style={mainTitleStyle}>PROJECT DASHBOARD</h1>
@@ -25,38 +58,15 @@ export default function DashboardPage() {
         </div>
 
         <div style={gridStyle}>
-          <ProjectCard 
-            title="Robot Arm" 
-            desc="로봇팔 관절 구조 분석" 
-            imageSrc="../models/RobotArm/robotarm.png" 
-            onClick={() => navigate("/study/robotarm")} 
-          />
-          <ProjectCard 
-            title="Suspension" 
-            desc="서스펜션 메커니즘 학습" 
-            imageSrc="../models/Suspension/suspension.png"
-            onClick={() => navigate("/study/suspension")} 
-          />
-          <ProjectCard 
-            title="V4 Engine" 
-            desc="V4 실린더 엔진 시뮬레이션" 
-            imageSrc="../models/V4_Engine/v4engine.png"
-            onClick={() => navigate("/study/v4engine")} 
-          />
-          <ProjectCard 
-            title="Robot Gripper" 
-            desc="로봇 집게 학습" 
-            imageSrc="../models/RobotGripper/robotgripper.png"
-            onClick={() => navigate("/study/robotgripper")} 
-          />
-
-          {/* {[1, 2, 3, 4].map((i) => (
-            <div key={i} style={addCardStyle}>
-              <div style={plusCircleStyle}>+</div>
-              <h4 style={addTitleStyle}>Add New Project</h4>
-              <p style={addDescStyle}>Create a new study or parts project</p>
-            </div>
-          ))} */}
+          {models.map((model) => (
+            <ProjectCard
+              key={model.modelUuid}
+              title={model.name}
+              desc="모델 학습 및 구조 분석"
+              imageSrc={model.imageUrl}
+              onClick={() => navigate(`/study/${model.modelUuid}`)}
+            />
+          ))}
         </div>
       </main>
     </div>

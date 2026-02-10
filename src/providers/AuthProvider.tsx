@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import api from "../api/axios";
 
 interface AuthContextType {
@@ -12,11 +12,15 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   // 새로고침 시 localStorage 기준으로 로그인 여부 복원
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem("isLoggedIn") === "true";
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
+
+  // ✅ 새로고침 시 로그인 상태 복원
+  useEffect(() => {
+    const stored = localStorage.getItem("isLoggedIn");
+    setIsAuthenticated(stored === "true");
+  }, []);
 
   // 로그인
   const login = async (
