@@ -3,7 +3,7 @@ name: Deploy to S3 and Invalidate CloudFront
 on:
   push:
     branches:
-      - main  # main 브랜치에 푸시될 때 실행 (브랜치명 확인 필요)
+      - main
 
 jobs:
   deploy:
@@ -29,6 +29,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
+          VITE_API_TARGET: ${{ secrets.VITE_API_TARGET }}
           CI: false
 
       # 5. AWS 자격 증명 설정
