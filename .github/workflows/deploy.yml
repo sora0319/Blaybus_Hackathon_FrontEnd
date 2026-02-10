@@ -18,8 +18,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '21'
-          cache: 'npm'  # npm install 속도 향상을 위해 캐시 사용
+          node-version: '22'
+          cache: 'npm'
 
       # 3. 의존성 설치
       - name: Install dependencies
@@ -28,6 +28,8 @@ jobs:
       # 4. 빌드 (React)
       - name: Build
         run: npm run build
+        env:
+          CI: false
 
       # 5. AWS 자격 증명 설정
       - name: Configure AWS Credentials
