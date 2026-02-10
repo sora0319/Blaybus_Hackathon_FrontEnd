@@ -10,6 +10,8 @@ import { V4EngineModel } from '../components/viewer/objects/V4Engine/model'
 import { RobotGripperModel } from '../components/viewer/objects/RobotGripper/model'
 import Header from '../components/Header'
 import type { ModelDef } from '../components/viewer/types'
+// ✅ [변경] axios 인스턴스 import
+import api from '../api/axios'
 
 // ----------------------------------------------------------------------
 // AI Assistant Component
@@ -39,23 +41,18 @@ const AIAssistantPanel = ({
     setError(null);
 
     try {
-      const res = await fetch('/api/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          modelName,
-          partName: targetPart,
-        }),
+      // ✅ [변경 1] fetch -> api.post (Axios 사용)
+      const res = await api.post('/api/ai', {
+        modelName,
+        partName: targetPart,
       });
 
-      if (!res.ok) {
-        throw new Error('AI 서버 오류');
-      }
-
-      const data = await res.json();
+      const data = res.data;
       setResponse(data.text);
     } catch (err: any) {
-      setError(err.message || 'AI 요청 실패');
+      console.error(err);
+      const errorMessage = err.response?.data?.message || err.message || 'AI 요청 실패';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -100,7 +97,6 @@ const LOCAL_MODEL_DATA: Record<string, ModelDef> = {
   suspension: SuspensionModel,
   v4engine: V4EngineModel,
   robotgripper: RobotGripperModel,
-  // 필요한 경우 여기에 다른 로컬 모델 추가
 };
 
 type StudyViewMode = 'single' | 'assembly' | 'edit' | 'simulator'
@@ -144,9 +140,8 @@ export default function StudyPage() {
   const { modelId } = useParams<{ modelId: string }>() // UUID
   const viewerRef = useRef<ViewerCanvasHandle>(null)
   
-  // ✅ [수정 1] 초기값을 null로 설정하여 데이터 로드 전에는 렌더링 방지
   const [currentModel, setCurrentModel] = useState<ModelDef | null>(null); 
-  const [isLoadingModel, setIsLoadingModel] = useState(true); // 로딩 상태 true로 시작
+  const [isLoadingModel, setIsLoadingModel] = useState(true); 
   const [apiPartDetails, setApiPartDetails] = useState<PartDetailData | null>(null);
 
   // 1. Model Data Fetching
@@ -157,16 +152,9 @@ export default function StudyPage() {
       setIsLoadingModel(true);
 
       try {
-        const res = await fetch(`/api/models/${modelId}`, {
-            credentials: 'include',
-        });
-        
-        if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(`Failed to fetch model data: ${res.status} ${errText}`);
-        }
-
-        const json: ApiResponse = await res.json();
+        // ✅ [변경 2] fetch -> api.get (Axios 사용, baseURL 자동 적용)
+        const res = await api.get<ApiResponse>(`/api/models/${modelId}`);
+        const json = res.data;
 
         console.log("🔥 [API Response] Raw Data:", json);
         
@@ -176,23 +164,22 @@ export default function StudyPage() {
           const normalizedTitle = apiData.title.toLowerCase().replace(/[\s-_]/g, '');
           const baseLocalModel = LOCAL_MODEL_DATA[normalizedTitle] || RobotArmModel;
 
+          // ✅ [변경 3] 엄격한 매칭 로직 적용 (Link vs Gear Link 오류 해결)
           const mergedParts = baseLocalModel.parts.map((localPart) => {
-            // 1. 로컬 파일명 정규화 (확장자 제거, 대문자, 공백/특수문자 제거)
+            // 1. 로컬 파일명 및 ID 정규화 (대문자, 특수문자 제거)
             const localFileName = localPart.path.split('/').pop()?.split('.')[0] || "";
             const normalizedLocalName = localFileName.toUpperCase().replace(/[\s-_%]/g, '');
             const normalizedLocalId = localPart.id.toUpperCase().replace(/[\s-_%]/g, '');
 
             const matchedApiPart = apiData.parts.find((apiPart) => {
-              // API URL 파싱 및 정규화
-              // URL 디코딩 (%20 -> 공백)
-              const decodedUrl = decodeURIComponent(apiPart.partUrl);
-              
-              // 파일명만 추출 ("Gear Link1.glb")
-              const urlFileName = decodedUrl.split('/').pop()?.split('?')[0] || "";
-              
-              // 확장자 제거 및 정규화 ("GEARLINK1")
-              const normalizedApiName = urlFileName.split('.')[0].toUpperCase().replace(/[\s-_%]/g, '');
-              return normalizedApiName === normalizedLocalName || normalizedApiName === normalizedLocalId;
+               // 2. API URL 디코딩 및 정규화
+               const decodedUrl = decodeURIComponent(apiPart.partUrl); // %20 -> 공백 변환
+               const urlFileName = decodedUrl.split('/').pop()?.split('?')[0] || ""; // 파일명 추출
+               const normalizedApiName = urlFileName.split('.')[0].toUpperCase().replace(/[\s-_%]/g, '');
+
+               // 3. 엄격한 일치 비교 (=== 사용)
+               // includes() 대신 ===를 사용하여 포함 관계가 아닌 정확한 일치를 확인
+               return normalizedApiName === normalizedLocalName || normalizedApiName === normalizedLocalId;
             });
 
             if (matchedApiPart) {
@@ -236,7 +223,6 @@ export default function StudyPage() {
     setSelectedPartId(null);
     setActiveSinglePartId(null);
     setApiPartDetails(null);
-    // currentModel은 fetchModelData에서 업데이트됨
   }, [modelId]);
 
   // Camera State (Local Storage)
@@ -289,8 +275,10 @@ export default function StudyPage() {
     const fetchMemo = async () => {
       setMemoLoading(true);
       try {
-        const res = await fetch(`/api/models/${modelId}/memo`, { credentials: 'include' });
-        const json = await res.json();
+        // ✅ [변경 4] fetch -> api.get
+        const res = await api.get(`/api/models/${modelId}/memo`);
+        const json = res.data;
+
         if (json.success && json.data) {
           setMemoUuid(json.data.memoUuid);
           setMemoText(json.data.memoContent.body);
@@ -310,15 +298,12 @@ export default function StudyPage() {
   const handleSaveMemo = async () => {
     if (!modelId) return;
     try {
-      const res = await fetch(`/api/models/${modelId}/memo`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: { title: `Memo`, body: memoText },
-        }),
-        credentials: 'include'
+      // ✅ [변경 5] fetch -> api.put
+      const res = await api.put(`/api/models/${modelId}/memo`, {
+        content: { title: `Memo`, body: memoText },
       });
-      const json = await res.json();
+      const json = res.data;
+
       if (json.success) {
         setMemoUuid(json.data.memoUuid);
         setIsEditing(false);
@@ -338,9 +323,10 @@ export default function StudyPage() {
     const partUuid = (part as any)?.partUuid;
 
     if (partUuid) {
-        fetch(`/api/parts/${partUuid}`)
-            .then(res => res.json())
-            .then((json: PartDetailResponse) => {
+        // ✅ [변경 6] fetch -> api.get
+        api.get<PartDetailResponse>(`/api/parts/${partUuid}`)
+            .then(res => res.data)
+            .then((json) => {
                 if (json.success && json.data) {
                     setApiPartDetails(json.data);
                 }
@@ -396,9 +382,6 @@ export default function StudyPage() {
   // Render
   // ----------------------------------------------------------------------
 
-  // ✅ [수정 2] 데이터가 준비되지 않았으면 로딩 화면을 보여줌
-  // 이 처리가 없으면 초기값(null) 때문에 에러가 나거나, 
-  // 초기값을 RobotArm으로 했을 경우 깜빡임이 발생함.
   if (isLoadingModel || !currentModel) {
     return (
       <div style={containerStyle}>
@@ -541,7 +524,6 @@ export default function StudyPage() {
 
                 <div style={singleViewerAreaStyle}>
                     <ViewerCanvas 
-                      // ✅ [수정] key에 viewMode를 추가하여 모드 전환 시 뷰어를 완전히 초기화
                       key={`viewer-${viewMode}-${modelId}`}
                       ref={viewerRef} 
                       model={currentModel} 
@@ -603,7 +585,6 @@ export default function StudyPage() {
               </div>
             ) : (
               <ViewerCanvas 
-                // ✅ [수정] key에 viewMode를 추가하여 모드 전환 시 뷰어를 완전히 초기화
                 key={`viewer-${viewMode}-${modelId}`}
                 ref={viewerRef} 
                 model={currentModel} 
@@ -1120,23 +1101,6 @@ function Tab({ label, active, onClick }: { label: string; active: boolean; onCli
     <button onClick={onClick} style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', background: active ? '#3b82f6' : 'rgba(15, 23, 42, 0.5)', color: active ? '#fff' : '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}>{label}</button>
   )
 };
-
-// const badgeListItemStyle: React.CSSProperties = {
-//   display: 'flex',
-//   flexDirection: 'column',
-//   gap: '4px',
-//   padding: '8px',
-//   background: 'rgba(30, 41, 59, 0.4)',
-//   borderRadius: '8px',
-//   border: '1px solid rgba(56, 189, 248, 0.1)',
-// };
-
-// const badgeStyle: React.CSSProperties = {
-//   fontSize: '11px',
-//   fontWeight: 700,
-//   color: '#38bdf8',
-//   textTransform: 'uppercase',
-// };
 
 const materialBoxStyle: React.CSSProperties = {
   padding: '10px',
