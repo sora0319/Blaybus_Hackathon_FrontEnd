@@ -189,6 +189,7 @@ const AIAssistantPanel = ({
   const handleSendMessage = async () => {
     if (!input.trim() || !modelUuid) return;
 
+    // 사용자 메시지 즉시 화면에 표시
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -201,21 +202,44 @@ const AIAssistantPanel = ({
     setIsLoading(true);
 
     try {
-      const res = await api.post(`/api/chat/${modelUuid}/message`, {
-        message: userMsg.text
-      });
+      // API 요청 (Body에 문자열 담아서 전송)
+      const res = await api.post(
+        `/api/chat/${modelUuid}/message`, 
+        userMsg.text, 
+        {
+          headers: {
+            'Content-Type': 'text/plain' 
+          }
+        }
+      );
 
-      if (res.data.success) {
-        const aiMsg: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          text: res.data.message,
-          timestamp: Date.now()
-        };
-        setMessages(prev => [...prev, aiMsg]);
+      // 응답 처리 (보여주신 JSON 형식에 맞춤)
+      // 응답 예시: { success: true, message: "AI 답변 텍스트...", data: null }
+      
+      let aiText = "";
+      
+      if (res.data.success && res.data.message) {
+        // 성공 케이스: message 필드에 있는 텍스트 사용
+        aiText = res.data.message;
+      } else if (typeof res.data === 'string') {
+        // 혹시라도 서버가 JSON이 아니라 그냥 문자열만 줄 경우 대비
+        aiText = res.data;
+      } else if (res.data.message) {
+        // success 필드가 없더라도 message가 있으면 사용 (V4 엔진 등)
+        aiText = res.data.message;
       } else {
-        throw new Error(res.data.message || "응답 실패");
+        aiText = "답변을 불러올 수 없습니다.";
       }
+
+      // AI 메시지 화면에 추가
+      const aiMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        text: aiText,
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, aiMsg]);
+
     } catch (err: any) {
       console.error(err);
       const errorMsg: ChatMessage = {
@@ -248,8 +272,17 @@ const AIAssistantPanel = ({
       </div>
 
       {/* Chat Area */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        
+      <div
+        id="ai-chat-scroll"
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px'
+        }}
+      >
         {!isHistoryLoaded && (
            <div style={{ textAlign: 'center', padding: '20px', color: '#64748b', fontSize: '13px' }}>
              대화 내용을 불러오는 중...
@@ -670,6 +703,23 @@ export default function StudyPage() {
         #info-panel-content::-webkit-scrollbar-track { background: transparent; }
         #info-panel-content::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.2); border-radius: 10px; }
         #info-panel-content::-webkit-scrollbar-thumb:hover { background: rgba(56, 189, 248, 0.4); }
+
+        #ai-chat-scroll::-webkit-scrollbar {
+          width: 4px;
+        }
+
+        #ai-chat-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        #ai-chat-scroll::-webkit-scrollbar-thumb {
+          background: rgba(56, 189, 248, 0.2);
+          border-radius: 10px;
+        }
+
+        #ai-chat-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(56, 189, 248, 0.4);
+        }
 
         #memo-textarea::-webkit-scrollbar { width: 6px; }
         #memo-textarea::-webkit-scrollbar-track { background: transparent; }
