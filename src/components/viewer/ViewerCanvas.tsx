@@ -12,7 +12,7 @@ import * as THREE from 'three'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
-import type { ModelDef } from '@/viewer/types'
+import type { ModelDef } from '../viewer/types'
 
 export type ViewerCanvasHandle = {
   zoomIn: () => void
