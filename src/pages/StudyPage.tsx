@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import ViewerCanvas from '../components/viewer/ViewerCanvas'
 import type { ViewerCanvasHandle } from '../components/viewer/ViewerCanvas'
-// ✅ 로컬 모델 데이터 import
 import { RobotArmModel } from '../components/viewer/objects/RobotArm/model'
 import { SuspensionModel } from '../components/viewer/objects/Suspension/model'
 import { V4EngineModel } from '../components/viewer/objects/V4Engine/model'
@@ -16,7 +15,6 @@ import api from '../api/axios'
 // ----------------------------------------------------------------------
 // Constants & Types
 // ----------------------------------------------------------------------
-
 const LOCAL_MODEL_DATA: Record<string, ModelDef> = {
   robotarm: RobotArmModel,
   suspension: SuspensionModel,
@@ -61,9 +59,6 @@ interface PartDetailResponse {
 // ----------------------------------------------------------------------
 // Helper: 파일명 추출 및 정규화 함수 (매칭 정확도 향상용)
 // ----------------------------------------------------------------------
-// URL이나 경로에서 순수 파일명(확장자 제외)만 추출합니다.
-// 예: "/models/V4/Piston.glb" -> "piston"
-// 예: "https://.../Part3.glb?query=123" -> "part3"
 const getPureFileName = (pathOrUrl: string | undefined) => {
     if (!pathOrUrl) return "";
     const filename = pathOrUrl.split('/').pop()?.split('?')[0] || "";
@@ -80,71 +75,290 @@ const normalizeName = (name: string | undefined) => {
 };
 
 // ----------------------------------------------------------------------
-// AI Assistant Component (기존 유지)
+// Types
+// ----------------------------------------------------------------------
+// UI에서 사용할 메시지 타입
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp: number;
+}
+
+// API 응답 데이터 타입 (History)
+interface ApiHistoryItem {
+  id: number;
+  role: 'USER' | 'ASSISTANT';
+  content: string;
+  createdAt: string;
+}
+
+interface ApiHistoryResponse {
+  success: boolean;
+  message: string;
+  data: ApiHistoryItem[];
+}
+
+// ----------------------------------------------------------------------
+// AI Assistant Component (Chat Interface with History)
 // ----------------------------------------------------------------------
 const AIAssistantPanel = ({ 
+  modelUuid, 
   targetPart, 
-  modelName, 
   active 
 }: { 
+  modelUuid: string | undefined, 
   targetPart: string | null, 
-  modelName: string, 
   active: boolean 
 }) => {
-  const [response, setResponse] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false); // 히스토리 로딩 여부 체크
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 헬퍼 함수: 메시지 내용 정제 (따옴표 제거 등)
+  const cleanContent = (text: string) => {
+    if (!text) return "";
+    // 예: "\"안녕\"" -> "안녕" (양끝의 따옴표가 있다면 제거)
+    if (text.startsWith('"') && text.endsWith('"') && text.length > 1) {
+      return text.slice(1, -1).replace(/\\"/g, '"'); // 이스케이프 된 따옴표 복구
+    }
+    return text;
+  };
+
+  // 초기 데이터(History) 불러오기
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (!modelUuid) return;
+
+      try {
+        const res = await api.get<ApiHistoryResponse>(`/api/chat/${modelUuid}/history`);
+        
+        if (res.data.success && Array.isArray(res.data.data)) {
+          const historyData = res.data.data;
+
+          if (historyData.length > 0) {
+            // 히스토리가 있으면 매핑해서 상태 업데이트
+            const mappedMessages: ChatMessage[] = historyData.map((item) => ({
+              id: item.id.toString(),
+              role: item.role === 'USER' ? 'user' : 'assistant',
+              text: cleanContent(item.content),
+              timestamp: new Date(item.createdAt).getTime()
+            }));
+            setMessages(mappedMessages);
+          } else {
+            // 히스토리가 비어있으면 환영 메시지 추가
+            setMessages([{
+              id: 'welcome',
+              role: 'assistant',
+              text: "안녕하세요! 이 모델에 대해 궁금한 점이 있으신가요? 부품을 선택하거나 자유롭게 질문해 주세요.",
+              timestamp: Date.now()
+            }]);
+          }
+        }
+      } catch (err) {
+        console.error("채팅 기록 불러오기 실패:", err);
+        // 에러 발생 시에도 최소한 환영 메시지는 띄움
+        setMessages([{
+          id: 'welcome-error',
+          role: 'assistant',
+          text: "이전 대화 내용을 불러오는 데 실패했습니다. 새 대화를 시작할 수 있습니다.",
+          timestamp: Date.now()
+        }]);
+      } finally {
+        setIsHistoryLoaded(true);
+      }
+    };
+
+    fetchHistory();
+  }, [modelUuid]);
+
+  // 스크롤 자동 이동 (메시지 변경 시)
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    setResponse('');
-    setError(null);
-  }, [targetPart, modelName]);
+    if (isHistoryLoaded) {
+      scrollToBottom();
+    }
+  }, [messages, isLoading, isHistoryLoaded]);
 
-  const handleAskAI = async () => {
-    if (!targetPart) return;
+  // 메시지 전송 핸들러
+  const handleSendMessage = async () => {
+    if (!input.trim() || !modelUuid) return;
 
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      text: input,
+      timestamp: Date.now()
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    setInput('');
     setIsLoading(true);
-    setError(null);
 
     try {
-      const res = await api.post('/api/ai', {
-        modelName,
-        partName: targetPart,
+      const res = await api.post(`/api/chat/${modelUuid}/message`, {
+        message: userMsg.text
       });
-      setResponse(res.data.text);
+
+      if (res.data.success) {
+        const aiMsg: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          text: res.data.message,
+          timestamp: Date.now()
+        };
+        setMessages(prev => [...prev, aiMsg]);
+      } else {
+        throw new Error(res.data.message || "응답 실패");
+      }
     } catch (err: any) {
       console.error(err);
-      const errorMessage = err.response?.data?.message || err.message || 'AI 요청 실패';
-      setError(errorMessage);
+      const errorMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        text: "죄송합니다. 오류가 발생하여 답변을 가져올 수 없습니다.",
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
   return (
-    <section style={{ ...panelCardStyle, flex: 1, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h3 style={{ ...panelTitleStyle, marginBottom: 0 }}>AI Assistant</h3>
+    <section style={{ ...panelCardStyle, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: 0, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15, 23, 42, 0.6)' }}>
+        <h3 style={{ ...panelTitleStyle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>🤖</span> AI Assistant
+        </h3>
         <div style={statusDotStyle(active)} />
       </div>
 
-      <div style={{ ...aiStatusStyle, flex: 1, flexDirection: 'column', gap: '10px' }}>
-        {!targetPart ? (
-          <span style={{ fontSize: '14px', color: '#64748b' }}>
-            부품을 선택하면 AI 분석을 사용할 수 있습니다.
-          </span>
-        ) : (
-          <>
-            {!response && !isLoading && !error && (
-              <button onClick={handleAskAI} style={aiButtonStyle}>
-                ✨ AI 분석 요청하기
-              </button>
-            )}
-            {isLoading && <span>⏳ 분석 중...</span>}
-            {error && <span style={{ color: '#ef4444' }}>⚠️ {error}</span>}
-            {response && <div style={{ whiteSpace: 'pre-wrap' }}>{response}</div>}
-          </>
+      {/* Chat Area */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        
+        {!isHistoryLoaded && (
+           <div style={{ textAlign: 'center', padding: '20px', color: '#64748b', fontSize: '13px' }}>
+             대화 내용을 불러오는 중...
+           </div>
         )}
+
+        {messages.map((msg) => (
+          <div 
+            key={msg.id} 
+            style={{ 
+              alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+              maxWidth: '85%',
+            }}
+          >
+            <div style={{ 
+              marginBottom: '4px', 
+              fontSize: '11px', 
+              color: '#64748b', 
+              textAlign: msg.role === 'user' ? 'right' : 'left',
+              paddingLeft: '4px', paddingRight: '4px'
+            }}>
+              {msg.role === 'user' ? 'Me' : 'AI'}
+            </div>
+            <div style={{
+              padding: '12px 16px',
+              borderRadius: msg.role === 'user' ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
+              background: msg.role === 'user' ? '#2563eb' : '#1e293b',
+              color: '#f1f5f9',
+              fontSize: '13.5px',
+              lineHeight: '1.6',
+              whiteSpace: 'pre-wrap',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              border: msg.role === 'assistant' ? '1px solid #334155' : 'none'
+            }}>
+              {msg.text}
+            </div>
+          </div>
+        ))}
+        
+        {isLoading && (
+          <div style={{ alignSelf: 'flex-start', maxWidth: '85%' }}>
+            <div style={{ marginBottom: '4px', fontSize: '11px', color: '#64748b', paddingLeft: '4px' }}>AI</div>
+            <div style={{
+              padding: '12px 16px',
+              borderRadius: '4px 16px 16px 16px',
+              background: '#1e293b',
+              border: '1px solid #334155',
+              color: '#94a3b8',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <span className="loading-dots">답변 생성 중...</span>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input Area */}
+      <div style={{ padding: '16px', borderTop: '1px solid #1e293b', background: 'rgba(15, 23, 42, 0.8)' }}>
+        {targetPart && (
+           <div style={{ marginBottom: '8px', fontSize: '11px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '4px' }}>
+             <span>🎯 선택됨: </span>
+             <span style={{ fontWeight: 700 }}>{targetPart}</span>
+           </div>
+        )}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={targetPart ? `${targetPart}에 대해 물어보세요...` : "궁금한 내용을 입력하세요..."}
+            style={{
+              flex: 1,
+              background: '#0f172a',
+              border: '1px solid #334155',
+              borderRadius: '12px',
+              padding: '12px',
+              color: '#fff',
+              fontSize: '13px',
+              resize: 'none',
+              outline: 'none',
+              height: '46px',
+              lineHeight: '1.5',
+              fontFamily: 'inherit'
+            }}
+          />
+          <button 
+            onClick={handleSendMessage}
+            disabled={isLoading || !input.trim()}
+            style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
+              background: input.trim() ? '#3b82f6' : '#1e293b',
+              border: input.trim() ? 'none' : '1px solid #334155',
+              color: input.trim() ? '#fff' : '#475569',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: input.trim() ? 'pointer' : 'default',
+              transition: 'all 0.2s'
+            }}
+          >
+            ➤
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -161,7 +375,7 @@ export default function StudyPage() {
   const [isLoadingModel, setIsLoadingModel] = useState(true); 
   const [apiPartDetails, setApiPartDetails] = useState<PartDetailData | null>(null);
 
-  // 1. Model Data Fetching & Smart Matching
+  // Model Data Fetching & Smart Matching
   useEffect(() => {
     if (!modelId) return;
 
@@ -178,7 +392,7 @@ export default function StudyPage() {
           const normalizedTitle = apiData.title.toLowerCase().replace(/[\s-_]/g, '');
           const baseLocalModel = LOCAL_MODEL_DATA[normalizedTitle] || RobotArmModel;
 
-          // ✅ [수정된 로직] 파일명(GLB) 기반 스마트 부품 매칭
+          // 파일명(GLB) 기반 스마트 부품 매칭
           const mergedParts = baseLocalModel.parts.map((localPart, index) => {
             const localFileName = getPureFileName(localPart.path); // path에서 파일명 추출 (예: piston)
             const localNameNorm = normalizeName(localPart.name || localPart.id);
@@ -188,11 +402,11 @@ export default function StudyPage() {
                 const apiFileName = getPureFileName(apiPart.partUrl);
                 const apiPartUuid = apiPart.partUuid;
 
-                // 1. [최우선] 파일명 완전 일치 (GLB 파일명이 같으면 같은 부품으로 간주)
+                // 파일명 완전 일치 (GLB 파일명이 같으면 같은 부품으로 간주)
                 // 로컬 "Piston 2" (path: Piston.glb) == API (url: .../Piston.glb) -> 매칭 성공
                 if (localFileName === apiFileName) return true;
 
-                // 2. [차선] 이름 포함 관계 (파일명이 다를 경우 대비)
+                // 이름 포함 관계 (파일명이 다를 경우 대비)
                 const apiNameNorm = normalizeName(apiFileName); // 보통 파일명에 이름이 포함됨
                 if (apiNameNorm.length > 2) {
                     if (localNameNorm.includes(apiNameNorm)) return true;
@@ -201,16 +415,13 @@ export default function StudyPage() {
                 return false;
             });
 
-            // 3. 매칭 실패 시, 인덱스로 대체 (최후의 수단)
+            // 매칭 실패 시, 인덱스로 대체 (최후의 수단)
             if (!matchedApiPart && apiData.parts[index]) {
-                // console.warn(`⚠️ 매칭 실패 [${localPart.id}]. 순서(${index})로 대체합니다.`);
                 matchedApiPart = apiData.parts[index];
             }
 
             return {
               ...localPart,
-              // 매칭된 UUID 주입. 
-              // 이제 Piston, Piston 2, Piston 3 모두 동일한 matchedApiPart의 UUID를 가집니다.
               partUuid: matchedApiPart?.partUuid, 
               desc: "" 
             };
@@ -289,30 +500,25 @@ export default function StudyPage() {
     saveSimulation()
   }, [viewMode])
 
-
-
-  // ... (Camera State Restoration 코드는 기존과 동일하므로 생략 가능, 혹은 그대로 두세요) ...
-  // [Camera State Restoration 코드 블록 위치]
-
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null)
   const [activeSinglePartId, setActiveSinglePartId] = useState<string | null>(null)
   const currentTargetPart = viewMode === 'single' ? activeSinglePartId : selectedPartId;
   const [ghost, setGhost] = useState(true)
   const [isExpanded, setIsExpanded] = useState(false)
   
-  // 가이드 관련 state들...
+  // 가이드 관련 state
   const [showGuide, setShowGuide] = useState(true) 
   const [showAssemblyGuide, setShowAssemblyGuide] = useState(true)
   const [showEditGuide, setShowEditGuide] = useState(true)
   
-  // 메모 관련 state들...
+  // 메모 관련 state
   const [memoText, setMemoText] = useState('')
   const [isEditing, setIsEditing] = useState(true)
   const [isMemoOpen, setIsMemoOpen] = useState(true)
   const [memoUuid, setMemoUuid] = useState<string | null>(null)
   const [memoLoading, setMemoLoading] = useState(false)
 
-  // Memo Fetching & Save (기존 유지)
+  // Memo Fetching & Save 
   useEffect(() => {
     if (!modelId) return;
     const fetchMemo = async () => {
@@ -337,7 +543,6 @@ export default function StudyPage() {
   }, [modelId]);
 
   const handleSaveMemo = async () => {
-    // ... (기존 코드 유지)
     if (!modelId) return;
     try {
       const res = await api.put(`/api/models/${modelId}/memo`, {
@@ -353,7 +558,6 @@ export default function StudyPage() {
     }
   };
 
-  // 2. Part Detail Fetching (수정됨: currentModel이 업데이트된 상태여야 함)
   useEffect(() => {
     let isMounted = true;
     
@@ -393,7 +597,7 @@ export default function StudyPage() {
     return () => { isMounted = false; };
   }, [currentTargetPart, currentModel]); // currentModel이 업데이트되면 다시 실행
 
-  // useMemo hooks (기존 유지)
+  // useMemo hooks 
   const selectedPart = useMemo(() => {
     if (!currentModel) return null;
     const id = viewMode === 'single' ? activeSinglePartId : selectedPartId;
@@ -402,25 +606,13 @@ export default function StudyPage() {
 
   const uniqueParts = useMemo(() => {
     if (!currentModel) return [];
-    // 썸네일이 있는 것만 필터링 (기존 로직 유지)
-    // 개선안: 동일한 썸네일/이름을 가진 중복 부품은 제거하여 단일 부품 리스트를 깔끔하게 할 수 있음
     const seen = new Set();
     return currentModel.parts.filter((p: any) => {
         if (!p.thumbnail || p.thumbnail.trim() === "") return false;
-        // Piston, Piston 2 등은 이름이 같으므로 하나만 표시하고 싶다면 아래 주석 해제
-        // const key = p.name.split(' ')[0]; // 단순화된 중복 제거 키
-        // if (seen.has(key)) return false;
-        // seen.add(key);
         return true;
     });
   }, [currentModel]);
 
-  // ... (나머지 useEffect 및 렌더링 코드는 기존과 동일하므로 스타일 등 유지) ...
-  // [기존 코드의 Render 부분 및 Styles 유지]
-  
-  // 아래는 기존 코드의 Render 부분을 그대로 사용하면 됩니다.
-  // ----------------------------------------------------------------------
-  
   useEffect(() => {
     if (viewMode === 'single' || viewMode === 'edit') setGhost(false);
     else setGhost(true);
@@ -451,7 +643,6 @@ export default function StudyPage() {
     if (viewMode === 'single') setActiveSinglePartId(id);
     else setSelectedPartId(id);
   }, [viewMode]);
-
 
   if (isLoadingModel || !currentModel) {
     return (
@@ -723,8 +914,8 @@ export default function StudyPage() {
         {!isExpanded && (
           <aside style={rightPanelStyle}>
             <AIAssistantPanel 
+              modelUuid={modelId} // URL 파라미터에서 가져온 UUID
               targetPart={currentTargetPart} 
-              modelName={modelId || "RobotArm"} 
               active={!!currentTargetPart}
             />
 
@@ -788,7 +979,7 @@ export default function StudyPage() {
 }
 
 // ----------------------------------------------------------------------
-// Styles (기존 스타일 그대로 유지)
+// Styles 
 // ----------------------------------------------------------------------
 const containerStyle: React.CSSProperties = {
   height: '100vh',
@@ -799,9 +990,6 @@ const containerStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 };
 
-// ... (이하 스타일 코드는 원본과 동일하게 복사해서 사용하세요)
-// 지면 관계상 아래 스타일 코드는 생략했습니다. 
-// 원본 코드의 스타일 정의 부분을 그대로 아래에 붙여넣으시면 됩니다.
 const mainLayoutStyle = (isExpanded: boolean): React.CSSProperties => ({
   flex: 1,
   display: 'grid',
