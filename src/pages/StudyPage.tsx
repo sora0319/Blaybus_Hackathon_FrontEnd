@@ -591,6 +591,39 @@ export default function StudyPage() {
     }
   };
 
+  // handleSaveMemo 아래 또는 관련 로직 근처
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
+
+  const handleDownloadPDF = async () => {
+    if (!modelId) return;
+    setIsPdfLoading(true);
+
+    try {
+      const response = await api.get(`/api/chat/${modelId}/report`, {
+        responseType: 'blob', // PDF 파일을 바이너리로 받기 위해 필수
+      });
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // 파일명: 모델명_리포트.pdf
+      const fileName = `${currentModel?.description?.title || 'Model'}_Report.pdf`;
+      link.setAttribute('download', fileName);
+      
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("PDF 다운로드 실패:", error);
+      alert("리포트를 생성하는 중 오류가 발생했습니다.");
+    } finally {
+      setIsPdfLoading(false);
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     
@@ -963,28 +996,48 @@ export default function StudyPage() {
 
         {!isExpanded && (
           <aside style={rightPanelStyle}>
+            {/* 1. AI Assistant 패널 */}
             <AIAssistantPanel 
-              modelUuid={modelId} // URL 파라미터에서 가져온 UUID
+              modelUuid={modelId} 
               targetPart={currentTargetPart} 
               active={!!currentTargetPart}
             />
 
+            {/* 2. Ghost Mode & PDF 저장 버튼 (나란히 배치) */}
             {viewMode !== 'single' && (
-                <section style={{ ...panelCardStyle, marginBottom: 0, padding: '12px' }}>
-                    <label style={checkboxLabelStyle}>
-                        <input
-                        type="checkbox"
-                        checked={ghost}
-                        onChange={(e) => setGhost(e.target.checked)}
-                        style={{ accentColor: '#38bdf8' }}
-                        />
-                        <span style={{ fontSize: '13px', color: '#94a3b8' }}>
-                        Ghost Mode 활성화
-                        </span>
-                    </label>
+              <div style={sideBySideContainerStyle}>
+                <section style={ghostModeSectionStyle}>
+                  <label style={checkboxLabelStyle}>
+                    <input
+                      type="checkbox"
+                      checked={ghost}
+                      onChange={(e) => setGhost(e.target.checked)}
+                      style={{ accentColor: '#38bdf8' }}
+                    />
+                    <span style={{ fontSize: '13px', color: '#94a3b8' }}>
+                      Ghost Mode
+                    </span>
+                  </label>
                 </section>
+
+                <button 
+                  style={{
+                    ...pdfButtonStyle,
+                    opacity: isPdfLoading ? 0.6 : 1,
+                    cursor: isPdfLoading ? 'not-allowed' : 'pointer'
+                  }}
+                  onClick={handleDownloadPDF}
+                  disabled={isPdfLoading}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(30, 41, 59, 0.6)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(15, 23, 42, 0.4)')}
+                >
+                  <span>{isPdfLoading ? '⏳' : '📄'}</span>
+                  {isPdfLoading ? '생성 중...' : 'PDF 저장'}
+                </button>
+              </div>
             )}
 
+            {/* 3. 메모 섹션 */}
             <section style={{ 
               ...memoSectionStyle, 
               flex: isMemoOpen ? 1 : '0 0 auto', 
@@ -997,6 +1050,7 @@ export default function StudyPage() {
                   {isMemoOpen ? '−' : '＋'}
                 </button>
               </div>
+
               {isMemoOpen && (
                 <div style={memoInnerWrapperStyle}>
                   <textarea 
@@ -1015,7 +1069,7 @@ export default function StudyPage() {
                       }}
                       style={memoSaveBtnStyle(isEditing)}
                     >
-                      {isEditing ? '저장하기' : '수정하기'}
+                      {isEditing ? (memoLoading ? '저장 중...' : '저장하기') : '수정하기'}
                     </button>
                   </div>
                 </div>
@@ -1515,4 +1569,39 @@ const usageBoxStyle: React.CSSProperties = {
   borderRadius: '4px',
   fontSize: '12px',
   lineHeight: 1.5,
+};
+
+const sideBySideContainerStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '12px',
+  marginBottom: 0,
+};
+
+const ghostModeSectionStyle: React.CSSProperties = {
+  flex: 1, // 공간을 반으로 나눔
+  background: 'rgba(15, 23, 42, 0.4)',
+  borderRadius: '24px',
+  padding: '12px 16px',
+  border: '1px solid #1e293b',
+  backdropFilter: 'blur(10px)',
+  display: 'flex',
+  alignItems: 'center',
+};
+
+const pdfButtonStyle: React.CSSProperties = {
+  flex: 1, // 공간을 반으로 나눔
+  background: 'rgba(15, 23, 42, 0.4)',
+  borderRadius: '24px',
+  padding: '12px 16px',
+  border: '1px solid #1e293b',
+  backdropFilter: 'blur(10px)',
+  color: '#38bdf8',
+  fontSize: '13px',
+  fontWeight: 600,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  transition: 'all 0.2s ease',
 };
