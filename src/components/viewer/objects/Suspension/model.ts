@@ -1,4 +1,4 @@
-import type { ModelDef } from '@/viewer/types'
+import type { ModelDef } from '../../types'
 
 export const SuspensionModel: ModelDef = {
 

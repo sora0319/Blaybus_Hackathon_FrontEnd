@@ -9,6 +9,7 @@ import { SuspensionModel } from '../components/viewer/objects/Suspension/model'
 import { V4EngineModel } from '../components/viewer/objects/V4Engine/model'
 import { RobotGripperModel } from '../components/viewer/objects/RobotGripper/model'
 import Header from '../components/Header'
+import type { ModelDef } from '../components/viewer/types'
 
 // ----------------------------------------------------------------------
 // AI Assistant Component
@@ -166,24 +167,33 @@ export default function StudyPage() {
         }
 
         const json: ApiResponse = await res.json();
+
+        console.log("🔥 [API Response] Raw Data:", json);
         
         if (json.success) {
           const apiData = json.data;
           
-          // 로컬 데이터 매칭 (좌표값 확보용)
           const normalizedTitle = apiData.title.toLowerCase().replace(/[\s-_]/g, '');
-          // 매칭되는 로컬 데이터가 없으면 RobotArm을 베이스로 쓰되, 
-          // 초기 렌더링 시에는 currentModel이 null이므로 화면에 'RobotArm'이 먼저 뜨진 않음.
           const baseLocalModel = LOCAL_MODEL_DATA[normalizedTitle] || RobotArmModel;
 
-          // 로컬 데이터 + API 데이터 병합
           const mergedParts = baseLocalModel.parts.map((localPart) => {
-            const localFileName = localPart.path.split('/').pop()?.split('.')[0]?.toUpperCase();
-            
-            const matchedApiPart = apiData.parts.find((apiPart) => 
-              apiPart.partUrl.toUpperCase().includes(localFileName || "") ||
-              apiPart.partUrl.toUpperCase().includes(localPart.id.toUpperCase())
-            );
+            // 1. 로컬 파일명 정규화 (확장자 제거, 대문자, 공백/특수문자 제거)
+            const localFileName = localPart.path.split('/').pop()?.split('.')[0] || "";
+            const normalizedLocalName = localFileName.toUpperCase().replace(/[\s-_%]/g, '');
+            const normalizedLocalId = localPart.id.toUpperCase().replace(/[\s-_%]/g, '');
+
+            const matchedApiPart = apiData.parts.find((apiPart) => {
+              // API URL 파싱 및 정규화
+              // URL 디코딩 (%20 -> 공백)
+              const decodedUrl = decodeURIComponent(apiPart.partUrl);
+              
+              // 파일명만 추출 ("Gear Link1.glb")
+              const urlFileName = decodedUrl.split('/').pop()?.split('?')[0] || "";
+              
+              // 확장자 제거 및 정규화 ("GEARLINK1")
+              const normalizedApiName = urlFileName.split('.')[0].toUpperCase().replace(/[\s-_%]/g, '');
+              return normalizedApiName === normalizedLocalName || normalizedApiName === normalizedLocalId;
+            });
 
             if (matchedApiPart) {
               return {
@@ -198,10 +208,10 @@ export default function StudyPage() {
           setCurrentModel({
             ...baseLocalModel,
             description: {
-                title: apiData.title,
-                summary: apiData.summary,
-                usage: apiData.usage?.length > 0 ? apiData.usage : baseLocalModel.description.usage,
-                theory: apiData.theory?.length > 0 ? apiData.theory : baseLocalModel.description.theory,
+              title: apiData.title,
+              summary: apiData.summary,
+              usage: apiData.usage?.length > 0 ? apiData.usage : (baseLocalModel.description?.usage || []),
+              theory: apiData.theory?.length > 0 ? apiData.theory : (baseLocalModel.description?.theory || []),
             },
             parts: mergedParts
           });
@@ -552,7 +562,7 @@ export default function StudyPage() {
                   <div style={{ ...infoBoxStyle, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                     <h3 style={partNameTitleStyle}>
                       {viewMode === 'assembly' && !selectedPartId 
-                        ? currentModel.description.title 
+                        ? (currentModel.description?.title || currentModel.name || "모델 정보 없음")
                         : (apiPartDetails?.name || selectedPart?.name || selectedPartId || "부품을 선택하세요")
                       }
                     </h3>
@@ -562,7 +572,7 @@ export default function StudyPage() {
                       {(viewMode === 'assembly' && !selectedPartId) ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                           <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                             {currentModel.description.summary}
+                             {currentModel.description?.summary || "요약 설명이 없습니다."}
                           </p>
                         </div>
                       ) : (
@@ -1111,22 +1121,22 @@ function Tab({ label, active, onClick }: { label: string; active: boolean; onCli
   )
 };
 
-const badgeListItemStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '4px',
-  padding: '8px',
-  background: 'rgba(30, 41, 59, 0.4)',
-  borderRadius: '8px',
-  border: '1px solid rgba(56, 189, 248, 0.1)',
-};
+// const badgeListItemStyle: React.CSSProperties = {
+//   display: 'flex',
+//   flexDirection: 'column',
+//   gap: '4px',
+//   padding: '8px',
+//   background: 'rgba(30, 41, 59, 0.4)',
+//   borderRadius: '8px',
+//   border: '1px solid rgba(56, 189, 248, 0.1)',
+// };
 
-const badgeStyle: React.CSSProperties = {
-  fontSize: '11px',
-  fontWeight: 700,
-  color: '#38bdf8',
-  textTransform: 'uppercase',
-};
+// const badgeStyle: React.CSSProperties = {
+//   fontSize: '11px',
+//   fontWeight: 700,
+//   color: '#38bdf8',
+//   textTransform: 'uppercase',
+// };
 
 const materialBoxStyle: React.CSSProperties = {
   padding: '10px',

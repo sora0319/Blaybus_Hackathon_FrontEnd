@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       basicSsl(),
     ],
     server: {
-      https: true,
+      // https: true,
       proxy: {
         '/api': {
           target: env.VITE_API_TARGET,

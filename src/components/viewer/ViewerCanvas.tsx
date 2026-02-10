@@ -227,7 +227,7 @@ const ViewerCanvas = forwardRef<
     controls.target.set(...(initialCameraState?.target ?? [0, 0.4, 0]))
 
     const transformControls = new TransformControls(camera, renderer.domElement)
-    scene.add(transformControls)
+    scene.add(transformControls as unknown as THREE.Object3D)
     transformControls.addEventListener('dragging-changed', (e) => {
       controls.enabled = !e.value
     })
